@@ -1,0 +1,24 @@
+name: k_step_lookahead
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - numpy
+  - matplotlib
+  - tqdm
+  - plotly
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+
+  - gymnasium
+  - pip
+
+  - pip:
+      - gym-anytrading
+      - opencv-python
