@@ -1,4 +1,4 @@
-# ICML_2026_K_STEP
+# K_STEP
 
 This repository contains experimental code for online reinforcement learning policies on synthetic environments, RiverSwim, and FrozenLake-style setups.
 
