@@ -79,7 +79,7 @@ def run_single_replication(args):
             policy.reset(model)
             history = [[s, False, False]]
 
-            for _ in range(n_horizon - 1):
+            for _ in range(n_horizon):
                 x, done, truncated = history[-1]
                 if done or truncated:
                     s, _ = model.reset()

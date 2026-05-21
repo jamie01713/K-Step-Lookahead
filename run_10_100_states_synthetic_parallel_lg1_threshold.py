@@ -200,11 +200,11 @@ def main(
 
     policies_10 = {
         LG1T: {"threshold": [0, 0.3, 0.6]},
-        LG1T_I: {"threshold": [0], "extent": 0.3},
+        LG1T_I: {"threshold": [0], "extent": 0.1},
     }
     policies_100 = {
         LG1T: {"threshold": [0, 0.3, 1.5]},
-        LG1T_I: {"threshold": [0], "extent": 0.3},
+        LG1T_I: {"threshold": [0], "extent": 0.1},
     }
 
     run_parallel_suite(

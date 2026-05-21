@@ -200,11 +200,11 @@ def main(
 
     policies_10 = {
         LG2T: {"threshold": [0, 0.9, 1.3], "power": 1 / 2},
-        LG2T_I: {"threshold": [0.0], "power": 1 / 2, "extent": 0.3},
+        LG2T_I: {"threshold": [0.0], "power": 1 / 2, "extent": 0.1},
     }
     policies_100 = {
         LG2T: {"threshold": [0, 0.9, 2.7], "power": 1 / 2},
-        LG2T_I: {"threshold": [0.0], "power": 1 / 2, "extent": 0.3},
+        LG2T_I: {"threshold": [0.0], "power": 1 / 2, "extent": 0.1},
     }
 
     run_parallel_suite(
