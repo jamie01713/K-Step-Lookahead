@@ -613,7 +613,7 @@ class LG1_2T_Adaptive():
 
         
 
-        self.set_name(f"LG1-2T_Adaptive($\\gamma_1$={self.threshold_i},$\\gamma_2$={self.threshold},p={self.power},cutoff={self.cutoff})")
+        self.set_name(f"LG1-2T_Adaptive($\\gamma_1$={self.threshold_i},$\\gamma_2$={self.threshold},p={self.power})")
         
         
 
@@ -691,7 +691,7 @@ class LG1_2T_Adaptive():
         order_i=np.lexsort((ucb_i,np.clip(lcb_i, a_min=self.threshold_i,a_max=None)),axis=-1)
         # if np.sum(self.N[x])>=self.cutoff*np.sqrt(20000):
         #     self.step[x]=1
-        if self.t>=np.sqrt(100*25*20000):
+        if self.t>=np.sqrt(16*4*20000):
             self.step.update({key: 1 for key in self.step})
         if self.t>=2 and self.step[self.history[-1][0]]==1 and self.step[x]==1:
             lcb_=self.rewards[x]-lcb(self.N_[x])
