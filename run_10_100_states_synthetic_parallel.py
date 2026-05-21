@@ -113,7 +113,7 @@ def run_parallel_suite(
     )
     data_pkl = os.path.join(path, f"data__{tag}_{kind}_parallel.pkl")
 
-    ss = SeedSequence(entropy)
+    ss = entropy if isinstance(entropy, SeedSequence) else SeedSequence(entropy)
     env_children = ss.spawn(n_experiments)
     run_children = ss.spawn(n_experiments * n_replications_per_experiment)
     worker_children = ss.spawn(n_experiments * n_replications_per_experiment)
