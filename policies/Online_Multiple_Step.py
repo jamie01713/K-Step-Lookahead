@@ -101,6 +101,108 @@ class LG2T():
             self.ran=0
         
         return a
+class LG2T_I():
+    def __init__(self, model,model_type,threshold,power,extent):
+        # super().__init__(model)
+        self.threshold=threshold
+        self.power=power
+        self.model_type=model_type
+        self.n_actions=model.action_space.n
+        self.extent=extent
+        self.reset(model)
+
+        
+
+        self.set_name(f"LG2T_I($\\gamma$={self.threshold},$\\Delta$={self.extent})")
+        
+        
+
+    def reset(self, model):
+        self.t = 1
+        self.history=[]
+        self.thresholds={}
+
+        # Visit count, observations etc.
+        self.N = {}
+        self.N_threshold={}
+        self.N_={}
+        self.rewards = {}
+        self.reward={}
+        self.reward_immediate={}
+        self.ran=0
+        self.rsum    = 0.0 
+      
+      
+    def name(self):
+        return self.name_str
+
+    def set_name(self, name):
+        self.name_str = name
+    def observe(self, x, a,r,y,done,truncated):
+        """ Update inner data according to observations """
+        # Usual observation
+        self.t        += 1
+        if self.model_type=="continuous":
+            x=x.tobytes()
+            y=y.tobytes()
+        
+        self.N[x][a]   += 1
+        self.N_threshold[x]+=1
+        self.history.append([x,a,r,y])
+        
+
+        self.rsum+=r
+        self.reward_immediate[x][a]=(self.N[x][a]-1)*self.reward_immediate[x][a] + r
+        self.reward_immediate[x][a] /=  self.N[x][a]
+        if self.t>=3:
+            _x,_a,_r,_=self.history[-2]
+            if self.ran==1:
+                self.N_[_x][_a]+=1
+                self.reward[_x][_a]=(self.N_[_x][_a]-1)*self.reward[_x][_a] +self.reward_immediate[x][a]
+                self.reward[_x][_a] /=  self.N_[_x][_a]
+        
+                self.rewards[_x][_a]=self.reward_immediate[_x][_a]+self.reward[_x][_a]
+       
+    def act(self,x):
+        if self.model_type=="continuous":
+            x=x.tobytes()
+        if x not in self.N.keys():
+            self.thresholds[x]=self.threshold
+            self.N_threshold[x]=0
+            self.N[x]=np.zeros(self.n_actions)
+            self.reward[x]=np.zeros(self.n_actions)
+            self.reward_immediate[x]=np.zeros(self.n_actions)
+            self.rewards[x]=np.zeros(self.n_actions)
+            self.N_[x]=np.zeros(self.n_actions)
+        lcb_=self.rewards[x]-lcb(self.N[x])-lcb(self.N_[x])
+        ucb_=self.rewards[x]+ucb(self.N[x],10000)+ucb(self.N_[x],10000)
+        lcb_i=self.reward_immediate[x]-lcb(self.N[x])
+        ucb_i=self.reward_immediate[x]+ucb(self.N[x],10000)
+        lcb_=np.where(np.minimum(self.N[x],self.N_[x])>0,lcb_,np.inf)
+        ucb_=np.where(np.minimum(self.N[x],self.N_[x])>0,ucb_,np.inf)
+        lcb_i=np.where(self.N[x]>0,lcb_i,np.inf)
+        ucb_i=np.where(self.N[x]>0,ucb_i,np.inf)
+        if self.N_threshold[x]>=np.log(20000):
+            self.thresholds[x]+=self.extent
+            self.N_threshold[x]=0
+        
+        
+    
+        order=np.lexsort((ucb_,np.clip(lcb_, a_min=max(self.thresholds[x],self.thresholds[x]),a_max=None)),axis=-1)
+        order_i=np.lexsort((ucb_i,np.clip(lcb_i, a_min=0.3,a_max=None)),axis=-1)
+        if self.t>=2:
+            epsilon=1/((1+(self.N[self.history[-1][0]][self.history[-1][1]]+1)**self.power))
+        else:
+            epsilon=1
+        is_random=np.random.uniform()<epsilon
+        if is_random:
+            a=order_i[-1]
+            self.ran=1
+        elif not is_random:
+            a=order[-1]
+            self.ran=0
+        
+        return a
 class LG2TU():
     def __init__(self, model,model_type,threshold,power):
         # super().__init__(model)
