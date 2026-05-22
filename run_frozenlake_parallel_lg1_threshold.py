@@ -5,14 +5,15 @@ import os
 import pickle
 import time
 
+import gymnasium as gym
 import numpy as np
 from matplotlib import pyplot as plt
 from numpy.random import SeedSequence
 
-from environments.mdp_10 import MD_10
-from environments.mdp_100 import MDP_100
 from policies.Online_Multiple_Step import LG1T, LG1T_I
-from policies.agent import iterate_algorithm, parse_history
+
+
+FROZENLAKE_DESC = ["SFFF", "FHFH", "FFFH", "HFFG"]
 
 
 def time_str(sec):
@@ -39,65 +40,83 @@ def build_learners(name_policies):
     return learners
 
 
-def build_model(kind, n_state, n_action, env_seed):
-    if kind == "synthetic10_lg1_threshold":
-        return MD_10(n_states=n_state, n_actions=n_action, entropy=env_seed)
-    if kind == "synthetic100_lg1_threshold":
-        return MDP_100(n_states=n_state, n_actions=n_action, entropy=env_seed)
-    raise ValueError(f"Unknown model kind: {kind}")
+def build_model(n_horizon):
+    return gym.make(
+        "FrozenLake-v1",
+        desc=FROZENLAKE_DESC,
+        is_slippery=True,
+        max_episode_steps=n_horizon,
+        success_rate=1.0 / 3.0,
+        reward_schedule=(1, 0, 0.2),
+    )
 
 
-def policy_names(learners, kind, n_state, n_action, model_type):
-    model = build_model(kind, n_state, n_action, SeedSequence(0))
-    return [policy(model, model_type=model_type, **cfg).name() for policy, cfg in learners]
+def policy_names(learners, n_horizon, model_type):
+    model = build_model(n_horizon)
+    try:
+        return [policy(model, model_type=model_type, **cfg).name() for policy, cfg in learners]
+    finally:
+        model.close()
+
+
+def average_reward_from_history(history):
+    rewards = np.array([step[2] for step in history], dtype=float)
+    return np.cumsum(rewards) / np.arange(1, len(rewards) + 1)
 
 
 def run_single_replication(args):
-    (
-        kind,
-        n_state,
-        n_action,
-        n_horizon,
-        learners,
-        model_type,
-        env_seed,
-        run_seed,
-        worker_seed,
-    ) = args
+    n_horizon, learners, model_type, run_seed, worker_seed = args
 
     np.random.seed(int(worker_seed.generate_state(1)[0]))
-    model = build_model(kind, n_state, n_action, env_seed)
+    env_seed = int(run_seed.generate_state(1)[0])
+    model = build_model(n_horizon)
     run_result = {}
 
-    for policy_cls, cfg in learners:
-        policy = policy_cls(model, model_type=model_type, **cfg)
-        s, _ = model.reset(run_seed)
-        policy.reset(model)
-        history = [[s, False, False]]
-        for _ in range(n_horizon - 1):
-            iterate_algorithm(model, policy, history, 0)
-        history.pop()
-        info = parse_history(model, history, model_type=model_type)
-        run_result[policy.name()] = {
-            "average_reward": np.asarray(info["average expected reward"]),
-            "time": getattr(policy, "rsum", 0.0),
-        }
+    try:
+        for policy_cls, cfg in learners:
+            policy = policy_cls(model, model_type=model_type, **cfg)
+            s, _ = model.reset(seed=env_seed)
+            policy.reset(model)
+            history = [[s, False, False]]
+
+            for _ in range(n_horizon):
+                x, done, truncated = history[-1]
+                if done or truncated:
+                    s, _ = model.reset()
+                    history[-1] = [s, False, False]
+                    x = s
+
+                action = policy.act(x)
+                a = action[0] if isinstance(action, tuple) else action
+                y, r, done, truncated, _ = model.step(a)
+                policy.observe(x, a, r, y, done, truncated)
+                history[-1] = (x, a, r, y, done, truncated)
+                history.append((y, done, truncated))
+
+            history.pop()
+            run_result[policy.name()] = {
+                "average_reward": average_reward_from_history(history),
+                "time": getattr(policy, "rsum", 0.0),
+            }
+    finally:
+        model.close()
 
     return run_result
 
 
-def run_parallel_suite(
-    *,
-    kind,
-    n_state,
-    n_action,
-    n_experiments,
-    n_replications_per_experiment,
-    n_horizon,
-    name_policies,
-    entropy,
-    model_type,
-    n_cpus,
+def main(
+    n_state=5,
+    n_action=4,
+    n_experiments=100,
+    n_replications_per_experiment=1,
+    n_horizon=20000,
+    name_policies={
+        LG1T: {"threshold": [0, 0.6]},
+        LG1T_I: {"threshold": [0], "extent": 0.3},
+    },
+    entropy=243799254704924441050048792905230269161,
+    model_type="discrete",
+    n_cpus=16,
 ):
     path = os.path.abspath("./results_random")
     os.makedirs(path, exist_ok=True)
@@ -111,14 +130,14 @@ def run_parallel_suite(
             f"H{n_horizon}",
         ]
     )
-    data_pkl = os.path.join(path, f"data__{tag}_{kind}_parallel_threshold.pkl")
+    data_pkl = os.path.join(path, f"data__{tag}_frozenlake_parallel_lg1_threshold.pkl")
 
-    ss = entropy if isinstance(entropy, SeedSequence) else SeedSequence(entropy)
+    ss = SeedSequence(entropy)
     children = ss.spawn(n_experiments * (n_replications_per_experiment + 1))
     sq = np.array(children, dtype=object).reshape(n_experiments, n_replications_per_experiment + 1)
 
     learners = build_learners(name_policies)
-    names = policy_names(learners, kind, n_state, n_action, model_type)
+    names = policy_names(learners, n_horizon, model_type)
     results = {
         name: {
             "average_reward": np.zeros((n_horizon, n_replications_per_experiment, n_experiments)),
@@ -127,7 +146,6 @@ def run_parallel_suite(
         for name in names
     }
 
-    print(f"\n=== Starting {kind} ===")
     t0 = time.time()
     ctx = mp.get_context("spawn")
     with ProcessPoolExecutor(max_workers=n_cpus, mp_context=ctx) as executor:
@@ -138,13 +156,9 @@ def run_parallel_suite(
 
             tasks = [
                 (
-                    kind,
-                    n_state,
-                    n_action,
                     n_horizon,
                     learners,
                     model_type,
-                    sq[e, 0],
                     sq[e, run + 1],
                     sq[e, run + 1],
                 )
@@ -179,46 +193,27 @@ def run_parallel_suite(
 
     fig.legend(*zip(*legend), loc="upper center", bbox_to_anchor=(0.5, 1.1), ncol=4, fontsize=12)
     plt.tight_layout()
-    plt.savefig(f"{tag}_{kind}_parallel_threshold.pdf", bbox_inches="tight")
+    plt.savefig(f"{tag}_frozenlake_parallel_lg1_threshold.pdf", bbox_inches="tight")
     plt.show()
-
-
-def main(
-    n_experiments_100=1000,
-    n_replications_per_experiment=1,
-    n_horizon=20000,
-    model_type="discrete",
-    entropy=243799254704924441050048792905230269161,
-    n_cpus=16,
-):
-    root_ss = SeedSequence(entropy)
-    (entropy_100,) = root_ss.spawn(1)
-
-    policies_100 = {
-        LG1T: {"threshold": [0, 0.3, 1.5]},
-        LG1T_I: {"threshold": [0], "extent": [0.1, 0.3]},
-    }
-    run_parallel_suite(
-        kind="synthetic100_lg1_threshold",
-        n_state=100,
-        n_action=25,
-        n_experiments=n_experiments_100,
-        n_replications_per_experiment=n_replications_per_experiment,
-        n_horizon=n_horizon,
-        name_policies=policies_100,
-        entropy=entropy_100,
-        model_type=model_type,
-        n_cpus=n_cpus,
-    )
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_experiments_100", type=int, default=1000)
+    parser.add_argument("--n_state", type=int, default=5)
+    parser.add_argument("--n_action", type=int, default=4)
+    parser.add_argument("--n_experiments", type=int, default=100)
     parser.add_argument("--n_replications_per_experiment", type=int, default=1)
     parser.add_argument("--n_horizon", type=int, default=20000)
+    parser.add_argument(
+        "--name_policies",
+        type=object,
+        default={
+            LG1T: {"threshold": [0, 0.6]},
+            LG1T_I: {"threshold": [0], "extent": 0.3},
+        },
+    )
     parser.add_argument("--model_type", type=str, default="discrete")
     parser.add_argument("--entropy", type=int, default=243799254704924441050048792905230269161)
     parser.add_argument("--n_cpus", type=int, default=16)

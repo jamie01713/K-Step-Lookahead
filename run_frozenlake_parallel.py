@@ -135,10 +135,8 @@ def main(
     data_pkl = os.path.join(path, f"data__{tag}_frozenlake_parallel.pkl")
 
     ss = SeedSequence(entropy)
-    run_children = ss.spawn(n_experiments * n_replications_per_experiment)
-    worker_children = ss.spawn(n_experiments * n_replications_per_experiment)
-    run_seeds = np.array(run_children, dtype=object).reshape(n_experiments, n_replications_per_experiment)
-    worker_seeds = np.array(worker_children, dtype=object).reshape(n_experiments, n_replications_per_experiment)
+    children = ss.spawn(n_experiments * (n_replications_per_experiment + 1))
+    sq = np.array(children, dtype=object).reshape(n_experiments, n_replications_per_experiment + 1)
 
     learners = build_learners(name_policies)
     names = policy_names(learners, n_horizon, model_type)
@@ -163,8 +161,8 @@ def main(
                     n_horizon,
                     learners,
                     model_type,
-                    run_seeds[e, run],
-                    worker_seeds[e, run],
+                    sq[e, run + 1],
+                    sq[e, run + 1],
                 )
                 for run in range(n_replications_per_experiment)
             ]

@@ -601,13 +601,14 @@ class LG1TU():
         
         return order_i[-1]
 class LG1_2T_Adaptive():
-    def __init__(self, model,model_type,threshold,threshold_i,power,cutoff=100):
+    def __init__(self, model,model_type,threshold,threshold_i,power,cutoff=100,change_point=16*4*20000):
         # super().__init__(model)
         self.threshold=threshold
         self.threshold_i=threshold_i
         self.power=power
         self.n_actions=model.action_space.n
         self.cutoff=cutoff
+        self.change_point=change_point
         self.model_type=model_type
         self.reset(model)
 
@@ -691,7 +692,7 @@ class LG1_2T_Adaptive():
         order_i=np.lexsort((ucb_i,np.clip(lcb_i, a_min=self.threshold_i,a_max=None)),axis=-1)
         # if np.sum(self.N[x])>=self.cutoff*np.sqrt(20000):
         #     self.step[x]=1
-        if self.t>=np.sqrt(16*4*20000):
+        if self.t>=np.sqrt(self.change_point):
             self.step.update({key: 1 for key in self.step})
         if self.t>=2 and self.step[self.history[-1][0]]==1 and self.step[x]==1:
             lcb_=self.rewards[x]-lcb(self.N_[x])

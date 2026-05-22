@@ -114,11 +114,8 @@ def run_parallel_suite(
     data_pkl = os.path.join(path, f"data__{tag}_{kind}_parallel.pkl")
 
     ss = entropy if isinstance(entropy, SeedSequence) else SeedSequence(entropy)
-    env_children = ss.spawn(n_experiments)
-    run_children = ss.spawn(n_experiments * n_replications_per_experiment)
-    worker_children = ss.spawn(n_experiments * n_replications_per_experiment)
-    run_seeds = np.array(run_children, dtype=object).reshape(n_experiments, n_replications_per_experiment)
-    worker_seeds = np.array(worker_children, dtype=object).reshape(n_experiments, n_replications_per_experiment)
+    children = ss.spawn(n_experiments * (n_replications_per_experiment + 1))
+    sq = np.array(children, dtype=object).reshape(n_experiments, n_replications_per_experiment + 1)
 
     learners = build_learners(name_policies)
     names = policy_names(learners, kind, n_state, n_action, model_type)
@@ -147,9 +144,9 @@ def run_parallel_suite(
                     n_horizon,
                     learners,
                     model_type,
-                    env_children[e],
-                    run_seeds[e, run],
-                    worker_seeds[e, run],
+                    sq[e, 0],
+                    sq[e, run + 1],
+                    sq[e, run + 1],
                 )
                 for run in range(n_replications_per_experiment)
             ]

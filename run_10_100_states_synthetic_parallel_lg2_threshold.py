@@ -114,11 +114,8 @@ def run_parallel_suite(
     data_pkl = os.path.join(path, f"data__{tag}_{kind}_parallel_threshold.pkl")
 
     ss = entropy if isinstance(entropy, SeedSequence) else SeedSequence(entropy)
-    env_children = ss.spawn(n_experiments)
-    run_children = ss.spawn(n_experiments * n_replications_per_experiment)
-    worker_children = ss.spawn(n_experiments * n_replications_per_experiment)
-    run_seeds = np.array(run_children, dtype=object).reshape(n_experiments, n_replications_per_experiment)
-    worker_seeds = np.array(worker_children, dtype=object).reshape(n_experiments, n_replications_per_experiment)
+    children = ss.spawn(n_experiments * (n_replications_per_experiment + 1))
+    sq = np.array(children, dtype=object).reshape(n_experiments, n_replications_per_experiment + 1)
 
     learners = build_learners(name_policies)
     names = policy_names(learners, kind, n_state, n_action, model_type)
@@ -147,9 +144,9 @@ def run_parallel_suite(
                     n_horizon,
                     learners,
                     model_type,
-                    env_children[e],
-                    run_seeds[e, run],
-                    worker_seeds[e, run],
+                    sq[e, 0],
+                    sq[e, run + 1],
+                    sq[e, run + 1],
                 )
                 for run in range(n_replications_per_experiment)
             ]
@@ -187,7 +184,6 @@ def run_parallel_suite(
 
 
 def main(
-    n_experiments_10=1000,
     n_experiments_100=1000,
     n_replications_per_experiment=1,
     n_horizon=20000,
@@ -196,29 +192,12 @@ def main(
     n_cpus=16,
 ):
     root_ss = SeedSequence(entropy)
-    entropy_10, entropy_100 = root_ss.spawn(2)
+    (entropy_100,) = root_ss.spawn(1)
 
-    policies_10 = {
-        LG2T: {"threshold": [0, 0.9, 1.3], "power": 1 / 2},
-        LG2T_I: {"threshold": [0.0], "power": 1 / 2, "extent": 0.1},
-    }
     policies_100 = {
         LG2T: {"threshold": [0, 0.9, 2.7], "power": 1 / 2},
-        LG2T_I: {"threshold": [0.0], "power": 1 / 2, "extent": 0.1},
+        LG2T_I: {"threshold": [0.0], "power": 1 / 2, "extent": [0.01, 0.05, 0.1, 0.3]},
     }
-
-    run_parallel_suite(
-        kind="synthetic10_lg2_threshold",
-        n_state=10,
-        n_action=5,
-        n_experiments=n_experiments_10,
-        n_replications_per_experiment=n_replications_per_experiment,
-        n_horizon=n_horizon,
-        name_policies=policies_10,
-        entropy=entropy_10,
-        model_type=model_type,
-        n_cpus=n_cpus,
-    )
     run_parallel_suite(
         kind="synthetic100_lg2_threshold",
         n_state=100,
@@ -237,7 +216,6 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_experiments_10", type=int, default=1000)
     parser.add_argument("--n_experiments_100", type=int, default=1000)
     parser.add_argument("--n_replications_per_experiment", type=int, default=1)
     parser.add_argument("--n_horizon", type=int, default=20000)

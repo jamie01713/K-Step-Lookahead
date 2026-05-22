@@ -113,7 +113,7 @@ def main(
     name_policies={
         LG1T: {"threshold": 0.3},
         LG2T: {"threshold": [0.9], "power": 1 / 2},
-        LG1_2T_Adaptive: {"threshold": [0.9], "power": 1 / 2, "threshold_i": 0.3},
+        LG1_2T_Adaptive: {"threshold": [0.9], "power": 1 / 2, "threshold_i": 0.3, "change_point": 1600 * 4 * 200000},
     },
     entropy=243799254704924441050048792905230269161,
     model_type="discrete",
@@ -134,10 +134,8 @@ def main(
     data_pkl = os.path.join(path, f"data__{tag}_frozenlake_parallel_1_2.pkl")
 
     ss = SeedSequence(entropy)
-    run_children = ss.spawn(n_experiments * n_replications_per_experiment)
-    worker_children = ss.spawn(n_experiments * n_replications_per_experiment)
-    run_seeds = np.array(run_children, dtype=object).reshape(n_experiments, n_replications_per_experiment)
-    worker_seeds = np.array(worker_children, dtype=object).reshape(n_experiments, n_replications_per_experiment)
+    children = ss.spawn(n_experiments * (n_replications_per_experiment + 1))
+    sq = np.array(children, dtype=object).reshape(n_experiments, n_replications_per_experiment + 1)
 
     learners = build_learners(name_policies)
     names = policy_names(learners, n_horizon, model_type)
@@ -162,8 +160,8 @@ def main(
                     n_horizon,
                     learners,
                     model_type,
-                    run_seeds[e, run],
-                    worker_seeds[e, run],
+                    sq[e, run + 1],
+                    sq[e, run + 1],
                 )
                 for run in range(n_replications_per_experiment)
             ]
@@ -215,7 +213,7 @@ if __name__ == "__main__":
         default={
             LG1T: {"threshold": 0.3},
             LG2T: {"threshold": [0.9], "power": 1 / 2},
-            LG1_2T_Adaptive: {"threshold": [0.9], "power": 1 / 2, "threshold_i": 0.3},
+            LG1_2T_Adaptive: {"threshold": [0.9], "power": 1 / 2, "threshold_i": 0.3, "change_point": 1600 * 4 * 200000},
         },
     )
     parser.add_argument("--model_type", type=str, default="discrete")
