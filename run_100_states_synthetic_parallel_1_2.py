@@ -1,4 +1,4 @@
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import product
 import multiprocessing as mp
 import os
@@ -42,22 +42,26 @@ def policy_names(learners, n_state, n_action, model_type):
     return [policy(model, model_type=model_type, **cfg).name() for policy, cfg in learners]
 
 
-def run_single_replication(args):
-    n_state, n_action, n_horizon, learners, model_type, env_seed, run_seed, worker_seed = args
-    np.random.seed(int(worker_seed.generate_state(1)[0]))
-    model = MDP_100(n_states=n_state, n_actions=n_action, entropy=env_seed)
-    run_result = {}
-    for policy_cls, cfg in learners:
-        policy = policy_cls(model, model_type=model_type, **cfg)
-        s, _ = model.reset(run_seed)
-        policy.reset(model)
-        history = [[s, False, False]]
-        for _ in range(n_horizon - 1):
-            iterate_algorithm(model, policy, history, 0)
-        history.pop()
-        info = parse_history(model, history, model_type=model_type)
-        run_result[policy.name()] = {"average_reward": np.asarray(info["average expected reward"])}
-    return run_result
+def run_one_experiment(entropy, n_state, n_action, n_replications_per_experiment, n_horizon, learners, model_type):
+    model = MDP_100(n_states=n_state, n_actions=n_action, entropy=entropy[0])
+    policies = [policy(model, model_type=model_type, **cfg) for policy, cfg in learners]
+    results = {
+        policy.name(): {
+            "average_reward": np.zeros((n_horizon, n_replications_per_experiment)),
+        }
+        for policy in policies
+    }
+    for run in range(n_replications_per_experiment):
+        for policy in policies:
+            s, _ = model.reset(entropy[run + 1])
+            policy.reset(model)
+            history = [[s, False, False]]
+            for _ in range(n_horizon - 1):
+                iterate_algorithm(model, policy, history, 0)
+            history.pop()
+            info = parse_history(model, history, model_type=model_type)
+            results[policy.name()]["average_reward"][:, run] = np.asarray(info["average expected reward"])
+    return results
 
 
 def main(
@@ -80,7 +84,7 @@ def main(
     tag = "__".join([f"S{n_state}", f"A{n_action}", f"E{n_experiments}", f"Re{n_replications_per_experiment}", f"H{n_horizon}"])
     data_pkl = os.path.join(path, f"data__{tag}_synthetic_parallel_1_2.pkl")
 
-    ss = SeedSequence(entropy)
+    ss = entropy if isinstance(entropy, SeedSequence) else SeedSequence(entropy)
     children = ss.spawn(n_experiments * (n_replications_per_experiment + 1))
     sq = np.array(children, dtype=object).reshape(n_experiments, n_replications_per_experiment + 1)
 
@@ -88,20 +92,36 @@ def main(
     names = policy_names(learners, n_state, n_action, model_type)
     results = {name: {"average_reward": np.zeros((n_horizon, n_replications_per_experiment, n_experiments))} for name in names}
 
+    configs = [
+        {
+            "entropy": sq[e],
+            "n_state": n_state,
+            "n_action": n_action,
+            "n_replications_per_experiment": n_replications_per_experiment,
+            "n_horizon": n_horizon,
+            "learners": learners,
+            "model_type": model_type,
+        }
+        for e in range(n_experiments)
+    ]
+
     t0 = time.time()
     ctx = mp.get_context("spawn")
+    all_results = []
     with ProcessPoolExecutor(max_workers=n_cpus, mp_context=ctx) as executor:
-        for e in range(n_experiments):
+        futures = [executor.submit(run_one_experiment, **config) for config in configs]
+        for completed, future in enumerate(as_completed(futures), start=1):
             t_spend = time.time() - t0
-            t_rem = (n_experiments - e) * t_spend / max(e, 1)
-            print(f"Run {e + 1} ... (spend {time_str(t_spend)}, remains {time_str(t_rem)})")
-            tasks = [(n_state, n_action, n_horizon, learners, model_type, sq[e, 0], sq[e, run + 1], sq[e, run + 1]) for run in range(n_replications_per_experiment)]
-            replications = list(executor.map(run_single_replication, tasks))
-            for run, replication in enumerate(replications):
-                for name, info in replication.items():
-                    results[name]["average_reward"][:, run, e] = info["average_reward"]
-            with open(data_pkl, "wb") as pkl:
-                pickle.dump(results, pkl)
+            t_rem = (n_experiments - completed) * t_spend / max(completed, 1)
+            print(f"Experiment {completed}/{n_experiments} ... (spend {time_str(t_spend)}, remains {time_str(t_rem)})")
+            all_results.append(future.result())
+
+    for e in range(n_experiments):
+        for name in names:
+            results[name]["average_reward"][:, :, e] = all_results[e][name]["average_reward"]
+
+    with open(data_pkl, "wb") as pkl:
+        pickle.dump(results, pkl)
 
     colors = plt.cm.tab20.colors
     fig, ax = plt.subplots()

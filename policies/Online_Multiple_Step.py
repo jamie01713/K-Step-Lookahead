@@ -702,7 +702,7 @@ class LG1_2T_Adaptive():
 
 
             order=np.lexsort((ucb_,np.clip(lcb_, a_min=max(self.threshold,self.threshold),a_max=None)),axis=-1)
-            epsilon=1/((1+(self.N[self.history[-1][0]][self.history[-1][1]]+1)**self.power))
+            epsilon=1/((1+(self.N2[self.history[-1][0]][self.history[-1][1]]+1)**self.power))
             is_random=np.random.uniform()<epsilon
             if is_random:
                 a=order_i[-1]
