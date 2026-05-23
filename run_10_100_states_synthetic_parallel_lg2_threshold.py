@@ -4,6 +4,7 @@ import multiprocessing as mp
 import os
 import pickle
 import time
+import tqdm
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -137,10 +138,7 @@ def run_parallel_suite(
     with ProcessPoolExecutor(max_workers=n_cpus, mp_context=ctx) as executor:
         futures = [executor.submit(run_one_experiment, **config) for config in configs]
         all_results = []
-        for completed, future in enumerate(as_completed(futures), start=1):
-            t_spend = time.time() - t0
-            t_rem = (n_experiments - completed) * t_spend / max(completed, 1)
-            print(f"Experiment {completed}/{n_experiments} ... (spend {time_str(t_spend)}, remains {time_str(t_rem)})")
+        for future in tqdm.tqdm(as_completed(futures), total=len(futures)):
             all_results.append(future.result())
 
         with open(data_pkl, "wb") as pkl:

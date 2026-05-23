@@ -4,6 +4,7 @@ import multiprocessing as mp
 import os
 import pickle
 import time
+import tqdm
 
 import numpy as np
 from matplotlib import pyplot as plt
