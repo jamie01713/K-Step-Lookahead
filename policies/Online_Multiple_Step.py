@@ -371,7 +371,7 @@ class LG1T():
         
         return order_i[-1]
 class LG1T_I():
-    def __init__(self, model,model_type,threshold,power=1,T_max=100,extent=0.1):
+    def __init__(self, model,model_type,threshold,power=1,T_max=20000,extent=0.1):
         # super().__init__(model)
         self.threshold=threshold
         self.power=power
@@ -654,9 +654,9 @@ class LG1_2T_Adaptive():
         self.rsum+=r
         self.reward_immediate[x][a]=(self.N[x][a]-1)*self.reward_immediate[x][a] + r
         self.reward_immediate[x][a] /=  self.N[x][a]
-        if self.step==1:
+        if self.step[x]==1:
             self.N2[x][a]+=1
-        if self.step==0 or self.ran==1:
+        if self.step[x]==0 or self.ran==1:
             
             _x,_a,_r,_=self.history[-2]
            
